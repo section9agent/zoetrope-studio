@@ -58,10 +58,10 @@ jobs:
       - name: Build macOS app
         run: pyinstaller zoetrope_studio.spec --clean --noconfirm
 
-      - name: Zip .app bundle
+      - name: Zip macOS folder
         run: |
           cd dist
-          zip -r ZoetropeStudio-mac.zip ZoetropeStudio.app
+          zip -r ZoetropeStudio-mac.zip ZoetropeStudio/
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
@@ -126,7 +126,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist-all/windows-exe/ZoetropeStudio.exe
+            dist-all/windows-exe/**
             dist-all/macos-app/ZoetropeStudio-mac.zip
             dist-all/linux-app/ZoetropeStudio-linux.zip
           generate_release_notes: true
