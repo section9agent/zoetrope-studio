@@ -166,12 +166,27 @@ class RecordRenderer:
         # half-angle, with a tiny 0.3° overlap so there are no hairline gaps.
         half_angle_deg = (360.0 / n_slots) / 2.0 + 0.3
 
-        # Arc width at the midline radius (used to size the source rectangle)
+        # Arc width at the midline radius
         arc_w_px = 2.0 * math.pi * mid_r_px / n_slots
 
-        # Source image drawn into a rectangle spanning the full ring height,
-        # centred on (0, -mid_r_px) after the rotation.  Width matches the arc.
-        rect = QRectF(-arc_w_px / 2.0, -outer_r_px, arc_w_px, ring_h_px)
+        # Draw the image at its NATURAL size, centred in the ring slot.
+        # We scale only if the image is wider than the slot arc width
+        # (so it still fits), but we never stretch it taller than it is.
+        img_w = frame_img.width()
+        img_h = frame_img.height()
+
+        # Scale down to fit the arc width if necessary (never scale up)
+        scale = min(1.0, arc_w_px / img_w) if img_w > 0 else 1.0
+        draw_w = img_w * scale
+        draw_h = img_h * scale
+
+        # Clamp draw height to the ring height (crop, don't squash)
+        draw_h = min(draw_h, ring_h_px)
+
+        # Centre horizontally on the slot, centre vertically in the ring
+        draw_x = -draw_w / 2.0
+        draw_y = -outer_r_px + (ring_h_px - draw_h) / 2.0
+        rect = QRectF(draw_x, draw_y, draw_w, draw_h)
 
         # Build a clip wedge: outer arc → radial line → inner arc → radial line
         clip_path = QPainterPath()
@@ -185,7 +200,12 @@ class RecordRenderer:
         clip_path.closeSubpath()
 
         painter.setClipPath(clip_path, Qt.ClipOperation.IntersectClip)
-        painter.drawImage(rect, frame_img)
+        # drawImage(QRectF, QImage) still scales — use the overload that doesn't
+        painter.drawImage(rect.topLeft(), frame_img.scaled(
+            int(draw_w), int(draw_h),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        ))
 
         if frame_number is not None and arc_w_px > 16:
             pen = QPen(QColor(255, 255, 255, 160))
