@@ -49,8 +49,6 @@ class PreviewWidget(QWidget):
         self._strobe_vis  = True         # strobe: is the frame visible?
         self._freeze_acc  = 0.0          # accumulator for freeze ticks
 
-        self._canvas_size = 520          # square canvas pixels
-
         self._build_ui()
 
         self._timer = QTimer(self)
@@ -67,10 +65,11 @@ class PreviewWidget(QWidget):
 
         # Canvas label (QLabel used as image display)
         self._canvas = QLabel()
-        self._canvas.setFixedSize(self._canvas_size, self._canvas_size)
         self._canvas.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._canvas.setStyleSheet("background: #0a0a0a; border-radius: 260px; border: 1px solid #222;")
-        layout.addWidget(self._canvas, alignment=Qt.AlignmentFlag.AlignHCenter)
+        self._canvas.setStyleSheet("background: #0a0a0a; border-radius: 8px; border: 1px solid #222;")
+        self._canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self._canvas.setMinimumSize(300, 300)
+        layout.addWidget(self._canvas, stretch=1)
 
         # Transport buttons row
         btn_row = QHBoxLayout()
@@ -239,10 +238,22 @@ class PreviewWidget(QWidget):
     # Rendering
     # ------------------------------------------------------------------
 
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self._mode == MODE_STOPPED:
+            self._refresh_canvas(black=False)
+
+    def _canvas_px(self) -> int:
+        """Current square render size — the smaller of canvas width/height."""
+        w = self._canvas.width()
+        h = self._canvas.height()
+        return max(100, min(w, h))
+
     def _refresh_canvas(self, black: bool):
+        size_px = self._canvas_px()
         qimg = self.renderer.render(
             self.model,
-            self._canvas_size,
+            size_px,
             self._angle_rad,
             background_black=black,
         )
