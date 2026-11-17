@@ -20,6 +20,9 @@ hidden_imports += [
     'PyQt6.QtGui',
     'PyQt6.QtWidgets',
     'PyQt6.sip',
+    'urllib.request',
+    'urllib.error',
+    'zipfile',
 ]
 
 a = Analysis(
