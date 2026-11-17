@@ -1,11 +1,13 @@
 """
 settings_widget.py
-Right panel: record type toggle, visual options, label color picker, export.
+Right panel: record type toggle, visual options, label color picker,
+label image import, and export.
 """
 from __future__ import annotations
+from pathlib import Path
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QPixmap
+from PyQt6.QtGui import QColor, QPixmap, QImage
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QCheckBox, QComboBox, QColorDialog, QFileDialog, QMessageBox,
@@ -14,6 +16,7 @@ from PyQt6.QtWidgets import (
 
 from record_model import RecordModel, RECORD_PRESETS
 from renderer import RecordRenderer
+from gif_loader import load_static_image
 
 
 class SettingsWidget(QWidget):
@@ -69,7 +72,7 @@ class SettingsWidget(QWidget):
         layout.addWidget(self._chk_numbers)
 
         # ── Label color ───────────────────────────────────────────────
-        layout.addWidget(self._section_label("Label Color"))
+        layout.addWidget(self._section_label("Center Label"))
 
         color_row = QHBoxLayout()
         color_row.setSpacing(8)
@@ -79,18 +82,41 @@ class SettingsWidget(QWidget):
         self._update_color_swatch()
         color_row.addWidget(self._color_swatch)
 
-        self._btn_color = QPushButton("Choose…")
+        self._btn_color = QPushButton("Color…")
         self._btn_color.setFixedHeight(32)
-        self._btn_color.setStyleSheet("""
-            QPushButton {
-                background: #1e1e1e; color: #ccc; border: 1px solid #333;
-                border-radius: 6px; font-size: 12px; padding: 0 10px;
-            }
-            QPushButton:hover { background: #252525; border-color: #444; color: #fff; }
-        """)
+        self._btn_color.setStyleSheet(self._btn_style())
         self._btn_color.clicked.connect(self._on_pick_color)
         color_row.addWidget(self._btn_color, stretch=1)
         layout.addLayout(color_row)
+
+        # Label image import row
+        img_row = QHBoxLayout()
+        img_row.setSpacing(6)
+
+        self._btn_import_label = QPushButton("Import Label Image…")
+        self._btn_import_label.setFixedHeight(30)
+        self._btn_import_label.setStyleSheet(self._btn_style())
+        self._btn_import_label.clicked.connect(self._on_import_label_image)
+        img_row.addWidget(self._btn_import_label, stretch=1)
+
+        self._btn_clear_label = QPushButton("✕")
+        self._btn_clear_label.setFixedSize(30, 30)
+        self._btn_clear_label.setToolTip("Clear label image")
+        self._btn_clear_label.setStyleSheet("""
+            QPushButton {
+                background: #1e1e1e; color: #888; border: 1px solid #2a2a2a;
+                border-radius: 6px; font-size: 13px; font-weight: bold;
+            }
+            QPushButton:hover { background: #2a1010; color: #D4537E; border-color: #3a1a1a; }
+        """)
+        self._btn_clear_label.clicked.connect(self._on_clear_label_image)
+        img_row.addWidget(self._btn_clear_label)
+        layout.addLayout(img_row)
+
+        self._label_img_info = QLabel("No image set")
+        self._label_img_info.setStyleSheet("color: #444; font-size: 10px;")
+        self._label_img_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self._label_img_info)
 
         # ── Spacer ────────────────────────────────────────────────────
         layout.addStretch()
@@ -146,6 +172,15 @@ class SettingsWidget(QWidget):
         self._update_export_size_label()
         self._dpi_combo.currentTextChanged.connect(self._update_export_size_label)
 
+    def _btn_style(self) -> str:
+        return """
+            QPushButton {
+                background: #1e1e1e; color: #ccc; border: 1px solid #333;
+                border-radius: 6px; font-size: 12px; padding: 0 10px;
+            }
+            QPushButton:hover { background: #252525; border-color: #444; color: #fff; }
+        """
+
     def _section_label(self, text: str) -> QLabel:
         lbl = QLabel(text.upper())
         lbl.setStyleSheet(
@@ -184,6 +219,7 @@ class SettingsWidget(QWidget):
         self._update_frames_label()
         self._update_export_size_label()
         self._update_color_swatch()
+        self._update_label_img_info()
 
     # ------------------------------------------------------------------
     # Slots
@@ -218,6 +254,27 @@ class SettingsWidget(QWidget):
             self._update_color_swatch()
             self.setting_changed.emit()
 
+    def _on_import_label_image(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import Label Image",
+            str(Path.home()),
+            "Images (*.png *.jpg *.jpeg *.bmp *.webp *.tiff);;All files (*)",
+        )
+        if not path:
+            return
+        frames = load_static_image(path)
+        if not frames:
+            QMessageBox.warning(self, "Load Error", f"Could not load:\n{path}")
+            return
+        self.model.label_image = frames[0]   # QImage
+        self._update_label_img_info()
+        self.setting_changed.emit()
+
+    def _on_clear_label_image(self):
+        self.model.label_image = None
+        self._update_label_img_info()
+        self.setting_changed.emit()
+
     def _on_export(self):
         if not self.model.rings:
             QMessageBox.information(self, "Nothing to export", "Add at least one ring before exporting.")
@@ -234,7 +291,6 @@ class SettingsWidget(QWidget):
         if not path:
             return
 
-        import math
         qimg = self._renderer.render(self.model, size_px, 0.0, background_black=False)
         if qimg.save(path, "PNG"):
             QMessageBox.information(
@@ -270,3 +326,13 @@ class SettingsWidget(QWidget):
         self._color_swatch.setStyleSheet(
             f"background: rgb({r},{g},{b}); border-radius: 6px; border: 1px solid #333;"
         )
+
+    def _update_label_img_info(self):
+        if self.model.label_image is not None:
+            w = self.model.label_image.width()
+            h = self.model.label_image.height()
+            self._label_img_info.setText(f"Label image: {w}×{h} px")
+            self._label_img_info.setStyleSheet("color: #1D9E75; font-size: 10px;")
+        else:
+            self._label_img_info.setText("No label image set")
+            self._label_img_info.setStyleSheet("color: #444; font-size: 10px;")
