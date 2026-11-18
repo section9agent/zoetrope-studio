@@ -11,7 +11,7 @@ from PyQt6.QtGui import QColor, QPixmap, QImage
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
     QCheckBox, QComboBox, QColorDialog, QFileDialog, QMessageBox,
-    QFrame, QSpinBox, QSizePolicy,
+    QFrame, QSpinBox, QSizePolicy, QButtonGroup,
 )
 
 from record_model import RecordModel, RECORD_PRESETS
@@ -45,11 +45,47 @@ class SettingsWidget(QWidget):
 
         type_row = QHBoxLayout()
         type_row.setSpacing(6)
-        self._btn_12in = self._make_toggle_btn('12" — 33⅓', "12in", "#1D9E75")
-        self._btn_7in  = self._make_toggle_btn('7" — 45',   "7in",  "#EF9F27")
+        self._btn_12in = self._make_toggle_btn('12"', "12in", "#1D9E75")
+        self._btn_7in  = self._make_toggle_btn('7"',  "7in",  "#EF9F27")
         type_row.addWidget(self._btn_12in)
         type_row.addWidget(self._btn_7in)
         layout.addLayout(type_row)
+
+        # ── RPM selector ─────────────────────────────────────────────
+        layout.addWidget(self._section_label("Speed (RPM)"))
+
+        rpm_row = QHBoxLayout()
+        rpm_row.setSpacing(6)
+
+        # Common RPM choices — user can pick any regardless of disc size
+        RPM_OPTIONS = [
+            ("33⅓", 100.0 / 3.0),
+            ("45",  45.0),
+            ("78",  78.0),
+        ]
+        self._rpm_buttons: list[tuple[QPushButton, float]] = []
+        for label, rpm_val in RPM_OPTIONS:
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            btn.setFixedHeight(30)
+            btn.setProperty("rpm_val", rpm_val)
+            btn.setStyleSheet("""
+                QPushButton {
+                    background: #1e1e1e; color: #888; border: 1px solid #2a2a2a;
+                    border-radius: 6px; font-size: 12px; font-weight: 500;
+                }
+                QPushButton:checked {
+                    background: #5a3ea0; color: #fff; border-color: #7955cc;
+                }
+                QPushButton:hover:!checked {
+                    background: #242424; color: #ccc; border-color: #333;
+                }
+            """)
+            btn.clicked.connect(lambda _, rv=rpm_val: self._on_rpm_changed(rv))
+            rpm_row.addWidget(btn)
+            self._rpm_buttons.append((btn, rpm_val))
+
+        layout.addLayout(rpm_row)
 
         self._frames_label = QLabel()
         self._frames_label.setStyleSheet("color: #555; font-size: 10px;")
@@ -168,6 +204,7 @@ class SettingsWidget(QWidget):
 
         # init labels
         self._update_type_buttons()
+        self._update_rpm_buttons()
         self._update_frames_label()
         self._update_export_size_label()
         self._dpi_combo.currentTextChanged.connect(self._update_export_size_label)
@@ -216,6 +253,7 @@ class SettingsWidget(QWidget):
     def set_model(self, model: RecordModel):
         self.model = model
         self._update_type_buttons()
+        self._update_rpm_buttons()
         self._update_frames_label()
         self._update_export_size_label()
         self._update_color_swatch()
@@ -229,12 +267,25 @@ class SettingsWidget(QWidget):
         if self.model.record_type == rt:
             self._update_type_buttons()
             return
-        self.model.record_type = rt
+        self.model.record_type = rt   # also clears _rpm_override
         self.model.clear_rings()
         self._update_type_buttons()
+        self._update_rpm_buttons()
         self._update_frames_label()
         self._update_export_size_label()
         self.model_changed.emit()
+        self.setting_changed.emit()
+
+    def _on_rpm_changed(self, rpm_val: float):
+        """RPM changed independently — recalculate frames but keep rings."""
+        # If the new RPM matches the preset, just clear the override
+        if abs(rpm_val - self.model.preset_rpm) < 0.01:
+            self.model.reset_rpm()
+        else:
+            self.model.set_rpm(rpm_val)
+        self._update_rpm_buttons()
+        self._update_frames_label()
+        # Emit setting_changed (not model_changed) so rings are NOT cleared
         self.setting_changed.emit()
 
     def _on_guides_toggled(self, checked: bool):
@@ -309,11 +360,22 @@ class SettingsWidget(QWidget):
         self._btn_12in.setChecked(rt == "12in")
         self._btn_7in.setChecked(rt == "7in")
 
+    def _update_rpm_buttons(self):
+        """Check whichever RPM button matches the model's current RPM."""
+        active_rpm = self.model.rpm
+        for btn, rpm_val in self._rpm_buttons:
+            btn.setChecked(abs(rpm_val - active_rpm) < 0.01)
+
     def _update_frames_label(self):
         n = self.model.frames_needed
         rpm = self.model.rpm
+        preset_rpm = self.model.preset_rpm
+        if self.model.rpm_is_overridden:
+            rpm_str = f"{rpm:.4g} RPM (preset: {preset_rpm:.4g})"
+        else:
+            rpm_str = f"{rpm:.4g} RPM"
         self._frames_label.setText(
-            f"{rpm:.4g} RPM  ·  {n} frames/ring  ·  {self.model.available_radial_in:.2f}\" playable"
+            f"{rpm_str}  ·  {n} frames/ring  ·  {self.model.available_radial_in:.2f}\" playable"
         )
 
     def _update_export_size_label(self):

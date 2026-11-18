@@ -75,6 +75,7 @@ class RingModel:
 class RecordModel:
     def __init__(self, record_type: str = "12in"):
         self._record_type = record_type
+        self._rpm_override: Optional[float] = None   # None → use preset RPM
         self.rings: List[RingModel] = []
         self.show_guides: bool       = True
         self.show_frame_numbers: bool = False
@@ -94,6 +95,7 @@ class RecordModel:
         if value not in RECORD_PRESETS:
             raise ValueError(f"Unknown record type: {value}")
         self._record_type = value
+        self._rpm_override = None   # reset override when disc type changes
 
     @property
     def preset(self) -> dict:
@@ -105,7 +107,25 @@ class RecordModel:
 
     @property
     def rpm(self) -> float:
+        """Active RPM — override if set, otherwise the preset value."""
+        return self._rpm_override if self._rpm_override is not None else self.preset["rpm"]
+
+    @property
+    def preset_rpm(self) -> float:
+        """Always returns the preset RPM, ignoring any override."""
         return self.preset["rpm"]
+
+    def set_rpm(self, value: float):
+        """Override the RPM independently of disc size."""
+        self._rpm_override = float(value)
+
+    def reset_rpm(self):
+        """Remove the RPM override and go back to the preset value."""
+        self._rpm_override = None
+
+    @property
+    def rpm_is_overridden(self) -> bool:
+        return self._rpm_override is not None
 
     @property
     def rps(self) -> float:

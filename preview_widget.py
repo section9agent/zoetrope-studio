@@ -198,12 +198,16 @@ class PreviewWidget(QWidget):
         self._update_rpm_label()
 
     def _update_rpm_label(self):
-        """Show the effective preview RPM (preset RPM × speed multiplier)."""
-        preview_rpm = self.model.rpm * self._speed_mult
-        preset_rpm  = self.model.rpm
-        self._rpm_label.setText(
-            f"{preview_rpm:.1f} RPM  (disc: {preset_rpm:.4g})"
-        )
+        """Show the effective preview RPM (model RPM × speed multiplier)."""
+        disc_rpm    = self.model.rpm          # may be overridden
+        preview_rpm = disc_rpm * self._speed_mult
+        if abs(self._speed_mult - 1.0) < 0.01:
+            # Speed is 1× — just show the disc RPM cleanly
+            self._rpm_label.setText(f"{disc_rpm:.4g} RPM")
+        else:
+            self._rpm_label.setText(
+                f"{preview_rpm:.1f} RPM  (disc: {disc_rpm:.4g})"
+            )
 
     # ------------------------------------------------------------------
     # Timer tick  — all time-based animation lives here
